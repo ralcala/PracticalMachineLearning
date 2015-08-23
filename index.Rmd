@@ -1,0 +1,230 @@
+---
+title: "Practical Machine Learning project - Human Activity Recognition"
+author: "Roberto J. Alcalá Sánchez"
+date: "Sunday, August 21, 2015"
+output: 
+  html_document: 
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+---
+
+```{r setup, include = FALSE}
+start_time <- Sys.time()
+
+library(caret) # Machine learning algorithms wrapper.
+
+knitr::opts_chunk$set(comment = "", message = FALSE, warning = FALSE, eval = TRUE)
+```
+
+This is the final project for the *Practical Machine Learning* course from the *Data Science Specialization* from [Coursera](http://coursera.org/).
+
+It consist of analizing a dataset from the Human Activity REcognition project, build a model and apply it to predict the activities performed in a test dataset.
+
+this will be done using the `Caret` package, but another packages are required to be installed because of dependencies if Caret or some of the machine learnign algorithms used (the identified packages are `ggplot2`, `lattice`, `klaR`, `MASS`, `rpart`, `randomForest`, `gbm`, `survival`, `splines`, `parallel` and `plyr`).
+
+
+# Load
+
+First of all we load the data, taking care of identofying missing data. Prior to loading, we identified that most of the data had the string `NA` as missing value indicator, nut some recorsd had an empty string a another ones had the string `#DIV/0!`(presummibly the data was exported from a spreadsheet and it indicated division by 0 in the cell formula).
+
+The first column, named `X` will be threated as the row names column (it consist of increasing numbers/ ID's).
+
+Some other co-variates (variables) that should be removed are the ones related to *bookeeping* (ID's, timestamp, user names of other personal identifiebla information...). These are the first 6 variables (the X columns had already been duiscarded while loading data.).
+
+This are not really sensor data and should not be used for training the models. In fact, in a real environment, this variables would'nt be available in a training dataset. Even worse, some of them can be highly correlated with the predictor variable, so using them would be the same as *cheating*, so they will be removed.
+
+Additionally, after an exploratory data analysis, a lot of variables where identified as having a extremly great proportion of missing values (over 98 %), sho they should also be disregarded as they convey little useful information. So all variables having more than **95 %** of missing value have been discarded.
+
+As a final step, we check the variables ofr near zero variance with an apropiate caret function, but no one was found after removing the columns with high number of missing values.
+
+A small table with the frquencies of missing values proportion (rounded up to 3 decimal places) is shown below the code.
+
+```{r load, cache = TRUE}
+har_data <- read.csv("pml-training.csv", row.names = "X", na.strings = c("", "NA", "#DIV/0!"))
+
+# Calculate the proportion of NA for each column.
+na_prop <- colSums(is.na(har_data)) / nrow(har_data)
+data.frame(table(round(na_prop, 3)))
+
+# Remove columns with NA proportion too high.
+col_remove <- na_prop > 0.95
+
+# Remove bookeeping columns, which are not real predictors.
+col_bookeeping <- which(names(har_data) %in% c(
+    "user_name",
+    "raw_timestamp_part_1",
+    "raw_timestamp_part_2",
+    "cvtd_timestamp",
+    "new_window",
+    "num_window"
+))
+col_remove[col_bookeeping] <- TRUE
+
+# Remove variables with low information in the remaining variables.
+col_zero_var <- nearZeroVar(har_data[, !col_remove])
+col_remove[col_zero_var] <- TRUE
+
+#rm(col_bookeeping, col_remove, col_zero_var, na_prop)
+```
+
+Once we have loaded and identified the interesting / useful columns we can proceed with the analysis.
+
+
+# Split data
+
+Several models will be tested to find the most promising one. This means that the training dataset should be split in 3 datasets:
+
+- Training: Used to traing the different models.
+- Testing:  All the models will be tested with this dataset to chose the best performing.
+- Evaluation: The best model will use this dataset to evaluate its accuracy more realistically.
+
+```{r split, cache = TRUE}
+# Enable reproducible research.
+set.seed(123456)
+
+in_train  <- createDataPartition(y = har_data$classe, p = 0.6, list = FALSE)
+
+har_train <- har_data[ in_train, !col_remove] # Training dataset.
+
+har_data2 <- har_data[-in_train, ]            # Rest of data.
+in_test   <- createDataPartition(y = har_data2$classe, p = 0.5, list = FALSE)
+
+har_test <- har_data2[ in_test, !col_remove] # Testing dataset.
+har_eval <- har_data2[-in_test, !col_remove] # Evaluation dataset.
+
+# Remove uneeded data.
+rm(har_data, har_data2, in_train, in_test)
+```
+
+
+# Train the models
+
+As explained previously, several methods will be tested and the best one (according to the Accuracy metric) will be used. No ensemble will be performed, although it should improve the results.
+
+The chosen methods are the ones seen in class plus some additional method:
+
+- nb (Naive Bayes).
+- lda (Linear Discriminant Analysis).
+- qda (Quadratic Discriminant Analysis).
+- svmLinear (Support Vector Machines with Linear Kernel).
+- rpart (CART).
+- rf (Random Forest).
+- gbm (Stochastic Gradient Boosting).
+
+```{r train, cache = TRUE}
+train_ctl <- trainControl(
+    verboseIter     = FALSE,
+    returnData      = FALSE,
+    savePredictions = FALSE,
+    returnResamp    = "none"
+)
+
+system.time({
+    mdl_nb    <- train(classe ~ ., method = "nb",        trControl = train_ctl, data = har_train)
+    mdl_lda   <- train(classe ~ ., method = "lda",       trControl = train_ctl, data = har_train)
+    mdl_qda   <- train(classe ~ ., method = "qda",       trControl = train_ctl, data = har_train)
+    mdl_svm   <- train(classe ~ ., method = "svmLinear", trControl = train_ctl, data = har_train)
+    mdl_rpart <- train(classe ~ ., method = "rpart",     trControl = train_ctl, data = har_train)
+    mdl_rf    <- train(classe ~ ., method = "rf",        trControl = train_ctl, data = har_train)
+    mdl_gbm   <- train(classe ~ ., method = "gbm",       trControl = train_ctl, data = har_train, verbose = FALSE)
+})
+```
+
+The running time is shown above. 
+
+
+# Predict with testing data
+
+For each model we will use the testing dataset and predict the dependent variable given the independent variables (we'll only use the variables defined by the model).
+
+```{r predict, cache = TRUE}
+system.time({
+    pred_nb    <- predict(mdl_nb,    har_test)
+    pred_lda   <- predict(mdl_lda,   har_test)
+    pred_qda   <- predict(mdl_qda,   har_test)
+    pred_svm   <- predict(mdl_svm,   har_test)
+    pred_rpart <- predict(mdl_rpart, har_test)
+    pred_rf    <- predict(mdl_rf,    har_test)
+    pred_gbm   <- predict(mdl_gbm,   har_test)
+})
+```
+
+The running time is shown above.
+
+
+# Get the metrics with testing data
+
+Once made the class prediction given the testing dataset, we can check the models accuracies and select the one with the highest (best) accuracy.
+
+```{r test, cache = TRUE}
+system.time({confmat <- list(
+    confusionMatrix(pred_nb,    har_test$classe),
+    confusionMatrix(pred_lda,   har_test$classe),
+    confusionMatrix(pred_qda,   har_test$classe),
+    confusionMatrix(pred_svm,   har_test$classe),
+    confusionMatrix(pred_rpart, har_test$classe),
+    confusionMatrix(pred_rf,    har_test$classe),
+    confusionMatrix(pred_gbm,   har_test$classe)
+)})
+
+accu <- sapply(confmat, function(item) item$overall["Accuracy"])
+
+models <- list(mdl_nb, mdl_lda, mdl_qda, mdl_svm, mdl_rpart, mdl_rf, mdl_gbm)
+
+accuracies <- data.frame(
+    model    = sapply(models, function(model) model$method),
+    training = sapply(models, function(model) model$results$Accuracy[2]),
+    testing  = accu
+)
+
+best_accu <- which.max(accu)
+best_mdl  <- models[[best_accu]]
+
+accuracies
+```
+
+The predicted accuracies by the training process (biased) and the accuracies from the training dataset (should be lower) used to select the best model, are shown above.
+
+From the testing dataset the selected model is the **`r paste0(best_mdl$method, " (", best_mdl$modelInfo$label, ")")`** with a reported (biased) accuracy of *`r round(max(accu), 3)`* when selecting the best model.
+
+
+# Evaluate the best model performance
+
+As said in the begiing, a final split to make an evaluation dataset was done. As the testing dataset was tested with all the models builded, ther reported accuracy was biased when selecting the best model. Sotesting with unseen data ONLY ONE TIME is the best practice to get a better estimate of the method accuracy.
+
+```{r eval, cache = TRUE}
+system.time({
+    eval_rf <- predict(mdl_rf, har_eval)
+    confmat_best <- confusionMatrix(eval_rf, har_eval$classe)
+})
+```
+
+The estimated real accuracy of the selected method is **`r round(confmat_best$overall["Accuracy"], 3)`**.
+
+
+# Predict submission results
+
+Finally we can make prediction using the submission dataset, which consist of only 20 observations. We only have to apply the best method to the dataset and store the results in file using the provided function.
+
+```{r submission, cache = TRUE}
+har_data <- read.csv("pml-testing.csv", row.names = "X", na.strings = c("", "NA", "#DIV/0!"))
+
+pred_submission <- predict(mdl_rf, har_data)
+
+# Function provided by Coursera instructors to store the results.
+pml_write_files = function(x) {
+  n = length(x)
+  for (i in 1:n) {
+    filename = paste0("problem_id_", i, ".txt")
+    write.table(x[i], file = filename, quote = FALSE, row.names = FALSE, col.names = FALSE)
+  }
+}
+pml_write_files(pred_submission)
+
+pred_submission
+```
+
+The correct results were actually 19 / 20, so the accuracy for the submission have been *`r 19/20`*, pretty close to the estimated one.
+
+*Note: The running time for generating the HTML have been `r as.double(Sys.time() - start_time)` seconds. As the code chunks have the cache option, it's lower than the actual time required to train, test and evaluate the models.*
