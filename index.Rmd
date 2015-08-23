@@ -36,7 +36,7 @@ This are not really sensor data and should not be used for training the models. 
 
 Additionally, after an exploratory data analysis, a lot of variables where identified as having a extremly great proportion of missing values (over 98 %), sho they should also be disregarded as they convey little useful information. So all variables having more than **95 %** of missing value have been discarded.
 
-As a final step, we check the variables ofr near zero variance with an apropiate caret function, but no one was found after removing the columns with high number of missing values.
+As a final step, we check the variables for near zero variance with an apropiate caret function, but no one was found after removing the columns with high number of missing values. So finally, 59 independent variables will be used as predictors.
 
 A small table with the frquencies of missing values proportion (rounded up to 3 decimal places) is shown below the code.
 
@@ -45,7 +45,6 @@ har_data <- read.csv("pml-training.csv", row.names = "X", na.strings = c("", "NA
 
 # Calculate the proportion of NA for each column.
 na_prop <- colSums(is.na(har_data)) / nrow(har_data)
-data.frame(table(round(na_prop, 3)))
 
 # Remove columns with NA proportion too high.
 col_remove <- na_prop > 0.95
@@ -65,7 +64,8 @@ col_remove[col_bookeeping] <- TRUE
 col_zero_var <- nearZeroVar(har_data[, !col_remove])
 col_remove[col_zero_var] <- TRUE
 
-#rm(col_bookeeping, col_remove, col_zero_var, na_prop)
+na_prop <- round(na_prop, 3)
+data.frame(table(na_prop))
 ```
 
 Once we have loaded and identified the interesting / useful columns we can proceed with the analysis.
@@ -78,6 +78,16 @@ Several models will be tested to find the most promising one. This means that th
 - Training: Used to traing the different models.
 - Testing:  All the models will be tested with this dataset to chose the best performing.
 - Evaluation: The best model will use this dataset to evaluate its accuracy more realistically.
+
+The *training* dataset represents the 60 % of the original training dataset. All this dataset will be used to train the model for each type (Naïve Bayes, LDa, Random Forest...) but internally Cret will use cross-validation to test several parameters and will use the parameters that have higher accuracy with cross-validation. It's done automatically and the model resutrned is already the one with the best parameters found by Caret.
+
+The *testing* dataset represents the 20% and will be used to chose the best model among all the trained ones. The one with the best reported accuracy will be chosen.
+
+Because the testing dataset is reused several times (one for each trained model), the selected model accuracy is no the actual accuracy to expect with unseen data (after all we've chosen the model that maximizes accuracy in the testing data, it's biased towards high accuracy).
+
+The *evaluation* dataset represents the 20% and will be used just once, with the best model, to report the actual estimated accuracy when new data arrive and is predicted with the selected model. If only one model had been trained, a the testing dataset would have been used once so no evaluation would be necessary. As we are several models instead, the evaluation dataset is necessary for a more realistic estimation.
+
+The proportions 60/20/20 % have been chosen because they have been reported as usual in several Machine Learning pages, with no further reason.
 
 ```{r split, cache = TRUE}
 # Enable reproducible research.
@@ -104,13 +114,17 @@ As explained previously, several methods will be tested and the best one (accord
 
 The chosen methods are the ones seen in class plus some additional method:
 
-- nb (Naive Bayes).
-- lda (Linear Discriminant Analysis).
-- qda (Quadratic Discriminant Analysis).
-- svmLinear (Support Vector Machines with Linear Kernel).
-- rpart (CART).
-- rf (Random Forest).
-- gbm (Stochastic Gradient Boosting).
+- `nb` (Naive Bayes).
+- `lda` (Linear Discriminant Analysis).
+- `qda` (Quadratic Discriminant Analysis).
+- `svmLinear` (Support Vector Machines with Linear Kernel).
+- `rpart` (CART).
+- `rf` (Random Forest).
+- `gbm` (Stochastic Gradient Boosting).
+
+No pre-processing have been deemed necessary after the exploratory data analysis, so the raw variables will be used.
+
+The main train control configurations have been leaved in place, the only changes made have been toward reducing hte memory consumption and avoiding any progress output.
 
 ```{r train, cache = TRUE}
 train_ctl <- trainControl(

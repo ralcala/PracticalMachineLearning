@@ -88,22 +88,14 @@ img {
 <p>Some other co-variates (variables) that should be removed are the ones related to <em>bookeeping</em> (ID’s, timestamp, user names of other personal identifiebla information…). These are the first 6 variables (the X columns had already been duiscarded while loading data.).</p>
 <p>This are not really sensor data and should not be used for training the models. In fact, in a real environment, this variables would’nt be available in a training dataset. Even worse, some of them can be highly correlated with the predictor variable, so using them would be the same as <em>cheating</em>, so they will be removed.</p>
 <p>Additionally, after an exploratory data analysis, a lot of variables where identified as having a extremly great proportion of missing values (over 98 %), sho they should also be disregarded as they convey little useful information. So all variables having more than <strong>95 %</strong> of missing value have been discarded.</p>
-<p>As a final step, we check the variables ofr near zero variance with an apropiate caret function, but no one was found after removing the columns with high number of missing values.</p>
+<p>As a final step, we check the variables for near zero variance with an apropiate caret function, but no one was found after removing the columns with high number of missing values. So finally, 59 independent variables will be used as predictors.</p>
 <p>A small table with the frquencies of missing values proportion (rounded up to 3 decimal places) is shown below the code.</p>
 <pre class="r"><code>har_data &lt;- read.csv(&quot;pml-training.csv&quot;, row.names = &quot;X&quot;, na.strings = c(&quot;&quot;, &quot;NA&quot;, &quot;#DIV/0!&quot;))
 
 # Calculate the proportion of NA for each column.
 na_prop &lt;- colSums(is.na(har_data)) / nrow(har_data)
-data.frame(table(round(na_prop, 3)))</code></pre>
-<pre><code>   Var1 Freq
-1     0   59
-2 0.979   69
-3  0.98   12
-4 0.981    2
-5 0.983    4
-6 0.984    7
-7     1    6</code></pre>
-<pre class="r"><code># Remove columns with NA proportion too high.
+
+# Remove columns with NA proportion too high.
 col_remove &lt;- na_prop &gt; 0.95
 
 # Remove bookeeping columns, which are not real predictors.
@@ -121,7 +113,16 @@ col_remove[col_bookeeping] &lt;- TRUE
 col_zero_var &lt;- nearZeroVar(har_data[, !col_remove])
 col_remove[col_zero_var] &lt;- TRUE
 
-#rm(col_bookeeping, col_remove, col_zero_var, na_prop)</code></pre>
+na_prop &lt;- round(na_prop, 3)
+data.frame(table(na_prop))</code></pre>
+<pre><code>  na_prop Freq
+1       0   59
+2   0.979   69
+3    0.98   12
+4   0.981    2
+5   0.983    4
+6   0.984    7
+7       1    6</code></pre>
 <p>Once we have loaded and identified the interesting / useful columns we can proceed with the analysis.</p>
 </div>
 <div id="split-data" class="section level1">
@@ -132,39 +133,47 @@ col_remove[col_zero_var] &lt;- TRUE
 <li>Testing: All the models will be tested with this dataset to chose the best performing.</li>
 <li>Evaluation: The best model will use this dataset to evaluate its accuracy more realistically.</li>
 </ul>
+<p>The <em>training</em> dataset represents the 60 % of the original training dataset. All this dataset will be used to train the model for each type (Naïve Bayes, LDa, Random Forest…) but internally Cret will use cross-validation to test several parameters and will use the parameters that have higher accuracy with cross-validation. It’s done automatically and the model resutrned is already the one with the best parameters found by Caret.</p>
+<p>The <em>testing</em> dataset represents the 20% and will be used to chose the best model among all the trained ones. The one with the best reported accuracy will be chosen.</p>
+<p>Because the testing dataset is reused several times (one for each trained model), the selected model accuracy is no the actual accuracy to expect with unseen data (after all we’ve chosen the model that maximizes accuracy in the testing data, it’s biased towards high accuracy).</p>
+<p>The <em>evaluation</em> dataset represents the 20% and will be used just once, with the best model, to report the actual estimated accuracy when new data arrive and is predicted with the selected model. If only one model had been trained, a the testing dataset would have been used once so no evaluation would be necessary. As we are several models instead, the evaluation dataset is necessary for a more realistic estimation.</p>
+<p>The proportions 60/20/20 % have been chosen because they have been reported as usual in several Machine Learning pages, with no further reason.</p>
 <pre class="r"><code># Enable reproducible research.
 set.seed(123456)
 
-in_train  &lt;- createDataPartition(y = har_data$classe, p = 0.06, list = FALSE)
+in_train  &lt;- createDataPartition(y = har_data$classe, p = 0.6, list = FALSE)
 
 har_train &lt;- har_data[ in_train, !col_remove] # Training dataset.
 
 har_data2 &lt;- har_data[-in_train, ]            # Rest of data.
-in_test   &lt;- createDataPartition(y = har_data2$classe, p = 0.15, list = FALSE)
+in_test   &lt;- createDataPartition(y = har_data2$classe, p = 0.5, list = FALSE)
 
 har_test &lt;- har_data2[ in_test, !col_remove] # Testing dataset.
 har_eval &lt;- har_data2[-in_test, !col_remove] # Evaluation dataset.
 
-#rm(har_data, har_data2, in_train, in_test)</code></pre>
+# Remove uneeded data.
+rm(har_data, har_data2, in_train, in_test)</code></pre>
 </div>
 <div id="train-the-models" class="section level1">
 <h1><span class="header-section-number">3</span> Train the models</h1>
 <p>As explained previously, several methods will be tested and the best one (according to the Accuracy metric) will be used. No ensemble will be performed, although it should improve the results.</p>
 <p>The chosen methods are the ones seen in class plus some additional method:</p>
 <ul>
-<li>nb (Naive Bayes).</li>
-<li>lda (Linear Discriminant Analysis).</li>
-<li>qda (Quadratic Discriminant Analysis).</li>
-<li>svmLinear (Support Vector Machines with Linear Kernel).</li>
-<li>rpart (CART).</li>
-<li>rf (Random Forest).</li>
-<li>gbm (Stochastic Gradient Boosting).</li>
+<li><code>nb</code> (Naive Bayes).</li>
+<li><code>lda</code> (Linear Discriminant Analysis).</li>
+<li><code>qda</code> (Quadratic Discriminant Analysis).</li>
+<li><code>svmLinear</code> (Support Vector Machines with Linear Kernel).</li>
+<li><code>rpart</code> (CART).</li>
+<li><code>rf</code> (Random Forest).</li>
+<li><code>gbm</code> (Stochastic Gradient Boosting).</li>
 </ul>
+<p>No pre-processing have been deemed necessary after the exploratory data analysis, so the raw variables will be used.</p>
+<p>The main train control configurations have been leaved in place, the only changes made have been toward reducing hte memory consumption and avoiding any progress output.</p>
 <pre class="r"><code>train_ctl &lt;- trainControl(
     verboseIter     = FALSE,
     returnData      = FALSE,
-    returnResamp    = &quot;final&quot;,
-    savePredictions = FALSE
+    savePredictions = FALSE,
+    returnResamp    = &quot;none&quot;
 )
 
 system.time({
@@ -177,8 +186,7 @@ system.time({
     mdl_gbm   &lt;- train(classe ~ ., method = &quot;gbm&quot;,       trControl = train_ctl, data = har_train, verbose = FALSE)
 })</code></pre>
 <pre><code>   user  system elapsed 
-1318.30    4.67 1324.55 </code></pre>
-<pre class="r"><code>models &lt;- c(mdl_nb, mdl_lda, mdl_qda, mdl_svm, mdl_rpart, mdl_rf, mdl_gbm)</code></pre>
+ 888.70    4.08 1090.98 </code></pre>
 <p>The running time is shown above.</p>
 </div>
 <div id="predict-with-testing-data" class="section level1">
@@ -194,7 +202,7 @@ system.time({
     pred_gbm   &lt;- predict(mdl_gbm,   har_test)
 })</code></pre>
 <pre><code>   user  system elapsed 
-  78.57    0.01   79.00 </code></pre>
+  54.25    0.00   88.54 </code></pre>
 <p>The running time is shown above.</p>
 </div>
 <div id="get-the-metrics-with-testing-data" class="section level1">
@@ -210,7 +218,7 @@ system.time({
     confusionMatrix(pred_gbm,   har_test$classe)
 )})</code></pre>
 <pre><code>   user  system elapsed 
-   0.20    0.02    0.63 </code></pre>
+   0.14    0.00    0.20 </code></pre>
 <pre class="r"><code>accu &lt;- sapply(confmat, function(item) item$overall[&quot;Accuracy&quot;])
 
 models &lt;- list(mdl_nb, mdl_lda, mdl_qda, mdl_svm, mdl_rpart, mdl_rf, mdl_gbm)
@@ -244,7 +252,7 @@ accuracies</code></pre>
     confmat_best &lt;- confusionMatrix(eval_rf, har_eval$classe)
 })</code></pre>
 <pre><code>   user  system elapsed 
-   4.92    0.13    5.20 </code></pre>
+   3.53    0.00    6.50 </code></pre>
 <p>The estimated real accuracy of the selected method is <strong>0.932</strong>.</p>
 </div>
 <div id="predict-submission-results" class="section level1">
@@ -268,7 +276,7 @@ pred_submission</code></pre>
 <pre><code> [1] B A B A A E D D A A B C B A E E A B B B
 Levels: A B C D E</code></pre>
 <p>The correct results were actually 19 / 20, so the accuracy for the submission have been <em>0.95</em>, pretty close to the estimated one.</p>
-<p>Note: The running time for generating the HTML have been 11.8125 seconds. As the code chunks have the cache option, it’s lower than the actual time required to train, test and evaluate the models.</p>
+<p><em>Note: The running time for generating the HTML have been 8.578125 seconds. As the code chunks have the cache option, it’s lower than the actual time required to train, test and evaluate the models.</em></p>
 </div>
 
 
