@@ -170,24 +170,36 @@ rm(har_data, har_data2, in_train, in_test)</code></pre>
 <p>No pre-processing have been deemed necessary after the exploratory data analysis, so the raw variables will be used.</p>
 <p>The main train control configurations have been leaved in place, the only changes made have been toward reducing hte memory consumption and avoiding any progress output.</p>
 <pre class="r"><code>train_ctl &lt;- trainControl(
-    verboseIter     = FALSE,
-    returnData      = FALSE,
-    savePredictions = FALSE,
-    returnResamp    = &quot;none&quot;
-)
-
-system.time({
-    mdl_nb    &lt;- train(classe ~ ., method = &quot;nb&quot;,        trControl = train_ctl, data = har_train)
-    mdl_lda   &lt;- train(classe ~ ., method = &quot;lda&quot;,       trControl = train_ctl, data = har_train)
-    mdl_qda   &lt;- train(classe ~ ., method = &quot;qda&quot;,       trControl = train_ctl, data = har_train)
-    mdl_svm   &lt;- train(classe ~ ., method = &quot;svmLinear&quot;, trControl = train_ctl, data = har_train)
-    mdl_rpart &lt;- train(classe ~ ., method = &quot;rpart&quot;,     trControl = train_ctl, data = har_train)
-    mdl_rf    &lt;- train(classe ~ ., method = &quot;rf&quot;,        trControl = train_ctl, data = har_train)
-    mdl_gbm   &lt;- train(classe ~ ., method = &quot;gbm&quot;,       trControl = train_ctl, data = har_train, verbose = FALSE)
-})</code></pre>
+    method          = &quot;cv&quot;,  # Use cross-validation (k = 10) instead of bootstraping (25 times).
+    number          = 10,    # Number of folds for cross-validation.
+    verboseIter     = FALSE, # Don't show information while training.
+    returnData      = FALSE, # Do no store the training data.
+    savePredictions = FALSE, # Don't store predictions for each resample.
+    trim            = TRUE,  # Trim uneeded information from the model.
+    returnResamp    = &quot;none&quot; # Don't return resample summary information.
+)</code></pre>
+<pre class="r"><code>system.time(mdl_nb &lt;- train(classe ~ ., method = &quot;nb&quot;, trControl = train_ctl, data = har_train))</code></pre>
 <pre><code>   user  system elapsed 
- 888.70    4.08 1090.98 </code></pre>
-<p>The running time is shown above.</p>
+ 396.47    0.20  500.58 </code></pre>
+<pre class="r"><code>system.time(mdl_lda &lt;- train(classe ~ ., method = &quot;lda&quot;, trControl = train_ctl, data = har_train))</code></pre>
+<pre><code>   user  system elapsed 
+  21.32    1.05   28.57 </code></pre>
+<pre class="r"><code>system.time(mdl_qda &lt;- train(classe ~ ., method = &quot;qda&quot;, trControl = train_ctl, data = har_train))</code></pre>
+<pre><code>   user  system elapsed 
+   9.79    1.28   12.34 </code></pre>
+<pre class="r"><code>system.time(mdl_svm &lt;- train(classe ~ ., method = &quot;svmLinear&quot;, trControl = train_ctl, data = har_train))</code></pre>
+<pre><code>   user  system elapsed 
+ 657.03    7.76  755.51 </code></pre>
+<pre class="r"><code>system.time(mdl_rpart &lt;- train(classe ~ ., method = &quot;rpart&quot;, trControl = train_ctl, data = har_train))</code></pre>
+<pre><code>   user  system elapsed 
+  26.82    0.33   27.80 </code></pre>
+<pre class="r"><code>system.time(mdl_df &lt;- train(classe ~ ., method = &quot;rf&quot;, trControl = train_ctl, data = har_train))</code></pre>
+<pre><code>   user  system elapsed 
+5105.28   21.03 5508.97 </code></pre>
+<pre class="r"><code>#system.time(mdl_gbm &lt;- train(classe ~ ., method = &quot;gbm&quot;, trControl = train_ctl, data = har_train, verbose = FALSE))
+mdl_rf  &lt;- mdl_df
+mdl_gbm &lt;- mdl_df</code></pre>
+<p>The running times are shown above.</p>
 </div>
 <div id="predict-with-testing-data" class="section level1">
 <h1><span class="header-section-number">4</span> Predict with testing data</h1>
@@ -202,7 +214,7 @@ system.time({
     pred_gbm   &lt;- predict(mdl_gbm,   har_test)
 })</code></pre>
 <pre><code>   user  system elapsed 
-  54.25    0.00   88.54 </code></pre>
+ 115.05    0.23  130.89 </code></pre>
 <p>The running time is shown above.</p>
 </div>
 <div id="get-the-metrics-with-testing-data" class="section level1">
@@ -218,7 +230,7 @@ system.time({
     confusionMatrix(pred_gbm,   har_test$classe)
 )})</code></pre>
 <pre><code>   user  system elapsed 
-   0.14    0.00    0.20 </code></pre>
+   0.16    0.01    0.59 </code></pre>
 <pre class="r"><code>accu &lt;- sapply(confmat, function(item) item$overall[&quot;Accuracy&quot;])
 
 models &lt;- list(mdl_nb, mdl_lda, mdl_qda, mdl_svm, mdl_rpart, mdl_rf, mdl_gbm)
@@ -234,15 +246,15 @@ best_mdl  &lt;- models[[best_accu]]
 
 accuracies</code></pre>
 <pre><code>      model  training   testing
-1        nb 0.6462521 0.6796678
-2       lda        NA 0.6821957
-3       qda        NA 0.8530155
-4 svmLinear        NA 0.6883351
-5     rpart 0.4582139 0.5500181
-6        rf 0.8796728 0.9284940
-7       gbm 0.7734258 0.9089924</code></pre>
+1        nb 0.7335262 0.7519755
+2       lda        NA 0.7032883
+3       qda        NA 0.8921744
+4 svmLinear        NA 0.7815447
+5     rpart 0.4709624 0.4804996
+6        rf 0.9907438 0.9900586
+7        rf 0.9907438 0.9900586</code></pre>
 <p>The predicted accuracies by the training process (biased) and the accuracies from the training dataset (should be lower) used to select the best model, are shown above.</p>
-<p>From the testing dataset the selected model is the <strong>rf (Random Forest)</strong> with a reported (biased) accuracy of <em>0.928</em> when selecting the best model.</p>
+<p>From the testing dataset the selected model is the <strong>rf (Random Forest)</strong> with a reported (biased) accuracy of <em>0.99</em> when selecting the best model.</p>
 </div>
 <div id="evaluate-the-best-model-performance" class="section level1">
 <h1><span class="header-section-number">6</span> Evaluate the best model performance</h1>
@@ -252,8 +264,8 @@ accuracies</code></pre>
     confmat_best &lt;- confusionMatrix(eval_rf, har_eval$classe)
 })</code></pre>
 <pre><code>   user  system elapsed 
-   3.53    0.00    6.50 </code></pre>
-<p>The estimated real accuracy of the selected method is <strong>0.932</strong>.</p>
+   1.40    0.00    1.49 </code></pre>
+<p>The estimated real accuracy of the selected method is <strong>0.993</strong>.</p>
 </div>
 <div id="predict-submission-results" class="section level1">
 <h1><span class="header-section-number">7</span> Predict submission results</h1>
@@ -273,10 +285,10 @@ pml_write_files = function(x) {
 pml_write_files(pred_submission)
 
 pred_submission</code></pre>
-<pre><code> [1] B A B A A E D D A A B C B A E E A B B B
+<pre><code> [1] B A A A A E D D A A B C B A E E A B B B
 Levels: A B C D E</code></pre>
 <p>The correct results were actually 19 / 20, so the accuracy for the submission have been <em>0.95</em>, pretty close to the estimated one.</p>
-<p><em>Note: The running time for generating the HTML have been 8.578125 seconds. As the code chunks have the cache option, it’s lower than the actual time required to train, test and evaluate the models.</em></p>
+<p><em>Note: The running time for generating the HTML have been 2.3981771 seconds. As the code chunks have the cache option, it’s lower than the actual time required to train, test and evaluate the models.</em></p>
 </div>
 
 

@@ -126,33 +126,55 @@ No pre-processing have been deemed necessary after the exploratory data analysis
 
 The main train control configurations have been leaved in place, the only changes made have been toward reducing hte memory consumption and avoiding any progress output.
 
-```{r train, cache = TRUE}
+```{r train_control, cache = TRUE}
 train_ctl <- trainControl(
-    verboseIter     = FALSE,
-    returnData      = FALSE,
-    savePredictions = FALSE,
-    returnResamp    = "none"
+    method          = "cv",  # Use cross-validation (k = 10) instead of bootstraping (25 times).
+    number          = 10,    # Number of folds for cross-validation.
+    verboseIter     = FALSE, # Don't show information while training.
+    returnData      = FALSE, # Do no store the training data.
+    savePredictions = FALSE, # Don't store predictions for each resample.
+    trim            = TRUE,  # Trim uneeded information from the model.
+    returnResamp    = "none" # Don't return resample summary information.
 )
-
-system.time({
-    mdl_nb    <- train(classe ~ ., method = "nb",        trControl = train_ctl, data = har_train)
-    mdl_lda   <- train(classe ~ ., method = "lda",       trControl = train_ctl, data = har_train)
-    mdl_qda   <- train(classe ~ ., method = "qda",       trControl = train_ctl, data = har_train)
-    mdl_svm   <- train(classe ~ ., method = "svmLinear", trControl = train_ctl, data = har_train)
-    mdl_rpart <- train(classe ~ ., method = "rpart",     trControl = train_ctl, data = har_train)
-    mdl_rf    <- train(classe ~ ., method = "rf",        trControl = train_ctl, data = har_train)
-    mdl_gbm   <- train(classe ~ ., method = "gbm",       trControl = train_ctl, data = har_train, verbose = FALSE)
-})
 ```
 
-The running time is shown above. 
+```{r train_nb, cache = TRUE}
+system.time(mdl_nb <- train(classe ~ ., method = "nb", trControl = train_ctl, data = har_train))
+```
+
+```{r train_lda, cache = TRUE}
+system.time(mdl_lda <- train(classe ~ ., method = "lda", trControl = train_ctl, data = har_train))
+```
+
+```{r train_qda, cache = TRUE}
+system.time(mdl_qda <- train(classe ~ ., method = "qda", trControl = train_ctl, data = har_train))
+```
+
+```{r train_svm, cache = TRUE}
+system.time(mdl_svm <- train(classe ~ ., method = "svmLinear", trControl = train_ctl, data = har_train))
+```
+
+```{r train_rpart, cache = TRUE}
+system.time(mdl_rpart <- train(classe ~ ., method = "rpart", trControl = train_ctl, data = har_train))
+```
+
+```{r train_rf, cache = TRUE}
+system.time(mdl_rf <- train(classe ~ ., method = "rf", trControl = train_ctl, data = har_train))
+```
+
+
+```{r train_gbm, cache = TRUE, eval = FALSE}
+system.time(mdl_gbm <- train(classe ~ ., method = "gbm", trControl = train_ctl, data = har_train, verbose = FALSE))
+```
+
+The running times are shown above. 
 
 
 # Predict with testing data
 
 For each model we will use the testing dataset and predict the dependent variable given the independent variables (we'll only use the variables defined by the model).
 
-```{r predict, cache = TRUE}
+```{r predict}
 system.time({
     pred_nb    <- predict(mdl_nb,    har_test)
     pred_lda   <- predict(mdl_lda,   har_test)
@@ -160,7 +182,7 @@ system.time({
     pred_svm   <- predict(mdl_svm,   har_test)
     pred_rpart <- predict(mdl_rpart, har_test)
     pred_rf    <- predict(mdl_rf,    har_test)
-    pred_gbm   <- predict(mdl_gbm,   har_test)
+    #pred_gbm   <- predict(mdl_gbm,   har_test)
 })
 ```
 
@@ -171,20 +193,20 @@ The running time is shown above.
 
 Once made the class prediction given the testing dataset, we can check the models accuracies and select the one with the highest (best) accuracy.
 
-```{r test, cache = TRUE}
+```{r test}
 system.time({confmat <- list(
     confusionMatrix(pred_nb,    har_test$classe),
     confusionMatrix(pred_lda,   har_test$classe),
     confusionMatrix(pred_qda,   har_test$classe),
     confusionMatrix(pred_svm,   har_test$classe),
     confusionMatrix(pred_rpart, har_test$classe),
-    confusionMatrix(pred_rf,    har_test$classe),
-    confusionMatrix(pred_gbm,   har_test$classe)
+    confusionMatrix(pred_rf,    har_test$classe)
+    #confusionMatrix(pred_gbm,   har_test$classe)
 )})
 
 accu <- sapply(confmat, function(item) item$overall["Accuracy"])
 
-models <- list(mdl_nb, mdl_lda, mdl_qda, mdl_svm, mdl_rpart, mdl_rf, mdl_gbm)
+models <- list(mdl_nb, mdl_lda, mdl_qda, mdl_svm, mdl_rpart, mdl_rf) #, mdl_gbm)
 
 accuracies <- data.frame(
     model    = sapply(models, function(model) model$method),
@@ -207,7 +229,7 @@ From the testing dataset the selected model is the **`r paste0(best_mdl$method, 
 
 As said in the begiing, a final split to make an evaluation dataset was done. As the testing dataset was tested with all the models builded, ther reported accuracy was biased when selecting the best model. Sotesting with unseen data ONLY ONE TIME is the best practice to get a better estimate of the method accuracy.
 
-```{r eval, cache = TRUE}
+```{r eval}
 system.time({
     eval_rf <- predict(mdl_rf, har_eval)
     confmat_best <- confusionMatrix(eval_rf, har_eval$classe)
